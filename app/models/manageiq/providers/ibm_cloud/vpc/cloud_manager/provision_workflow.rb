@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# NOTES: 2021-03-03
+# Watch for memoiazation. In Rails with Dali the ||= sends the value to be  memcached.
 require 'ipaddr'
 
 class ManageIQ::Providers::IbmCloud::VPC::CloudManager::ProvisionWorkflow < ::MiqProvisionCloudWorkflow
@@ -21,157 +23,67 @@ class ManageIQ::Providers::IbmCloud::VPC::CloudManager::ProvisionWorkflow < ::Mi
     %i[name size shareable]
   end
 
-  # Fetch available datacenters for this region.
-  # @param _options [Hash] Option values returned from web form.
-  # @return [Hash] Hash with ems_ref as key and name as value.
-  def allowed_placement_availability_zone(_options = {})
-    @allowed_placement_availability_zone ||= index_dropdown(ar_ems.availability_zones)
-  rescue RuntimeError => e
-    log_error_message(__method__, '', e)
-    raise
-  end
-
   # Fetch available system profiles.
   # @param _options [Hash] Option values returned from web form.
   # @return [Hash] Hash with ems_ref as key and name as value.
-  def allowed_sys_type(_options = {})
-    @allowed_sys_type ||= index_dropdown(ar_ems.flavors)
-  rescue RuntimeError => e
-    log_error_message(__method__, '', e)
+  def provision_type_to_profile(_options = {})
+    @provision_type_to_profile ||= index_dropdown(ar_ems.flavors)
+  rescue => e
+    log_message('', __method__, e)
+    raise
+  end
+
+  # Fetch available zones for this region.
+  # @param _options [Hash] Option values returned from web form.
+  # @return [Hash] Hash with ems_ref as key and name as value.
+  def placement_availability_zone_to_zone(_options = {})
+    @placement_availability_zone_to_zone ||= index_dropdown(ar_ems.availability_zones)
+  rescue => e
+    log_message('', __method__, e)
     raise
   end
 
   # @param _options [Hash] Option values returned from web form.
   # @return [Hash] Hash with ems_ref as key and name as value.
-  def allowed_storage_type(_options = {})
-    @allowed_storage_type ||= index_dropdown(sdk_fetch(:collection, :list_volume_profiles))
+  def storage_type_to_profile(_options = {})
+    @storage_type_to_profile ||= string_dropdown(sdk_fetch(:collection, :list_volume_profiles), :key => :name, :remove_fields => %w[custom])
   rescue => e
-    log_error_message(__method__, '', e)
+    log_message('', __method__, e)
     raise
   end
 
   # Get a hash of available SSH key values.
   # @param _options [Hash] Option values returned from web form.
   # @return [Hash] Hash with ems_ref as key and name as value.
-  def allowed_guest_access_key_pairs(_options = {})
-    return @allowed_guest_access_key_pairs unless @allowed_guest_access_key_pairs.nil?
+  def guest_access_key_pairs_to_keys(_options = {})
+    return @guest_access_key_pairs_to_keys unless @guest_access_key_pairs_to_keys.nil?
 
-    @allowed_guest_access_key_pairs ||= begin
-      result = sdk_fetch(:request, :list_keys, :optional_key => :keys)
-      string_dropdown(result, :key => :id, :value => :name)
-    end
+    result = sdk_fetch(:request, :list_keys, :optional_key => :keys)
+    @guest_access_key_pairs_to_keys ||= string_dropdown(result, :key => :id, :value => :name)
   rescue => e
-    log_error_message(__method__, '', e)
+    log_message('', __method__, e)
     raise
   end
 
   # List available VPCs.
   # @param _options [Hash] Option values returned from web form.
   # @return [Hash] Hash with ems_ref as key and name as value.
-  def allowed_cloud_networks(_options = {})
-    # TODO: Filter on datacenter. Return empty hash until datacenter is set.
-    string_dropdown(ar_ems.cloud_networks, :add_none => true)
+  def cloud_networks_to_vpc(_options = {})
+    @cloud_networks_to_vpc ||= string_dropdown(ar_ems.cloud_networks)
   rescue => e
-    log_error_message(__method__, '', e)
+    log_message('', __method__, e)
     raise
   end
 
   # List available Subnets.
   # @param _options [Hash] Option values returned from web form.
   # @return [Hash] Hash with ems_ref as key and name as value.
-  def allowed_subnets(_options = {})
+  def cloud_subnets(_options = {})
     # TODO: Filter on VPC. Return empty hash until VPC is set.
-    string_dropdown(ar_ems.cloud_subnets, :add_none => true)
+    string_dropdown(ar_ems.cloud_subnets)
   rescue => e
-    log_error_message(__method__, '', e)
+    log_message('', __method__, e)
     raise
-  end
-
-  # Fetch volumes that either multi_attachment or with a status of available.
-  # @param _options [Hash] Option values returned from web form.
-  # @return [Hash] Hash with ems_ref as key and name as value.
-  def allowed_cloud_volumes(_options = {})
-    # TODO: Filter on datacenter. Return empty hash until VPC is set.
-    ar_volumes = ar_ems.cloud_volumes.select do |cloud_volume|
-      (cloud_volume['multi_attachment'] || cloud_volume['status'] == 'available')
-    end
-
-    string_dropdown(ar_volumes)
-  rescue => e
-    log_error_message(__method__, '', e)
-    raise
-  end
-
-  # Retrieve a list of resource groups from the IBM Cloud resource controller API.
-  # TODO: Remove when all values available via persistor.
-  # @param _options [Hash] Not used
-  # @return [Array<Hash<String: String>>] A list of hashes containing the resource group id and name.
-  def allowed_resource_group(_options = {})
-    # FIXME: Guard against cloudtools without resource controller method. I don't want to check it in at the moment. It is a hack, and I'm not sure I need the data.
-    begin
-      resource_group_list = sdk.cloudtools.respond_to?(:resource_controller) ? sdk.cloudtools.resource_controller.resource_groups : []
-    rescue => e
-      log_error_message(__method__, '', e)
-      resource_group_list = []
-    end
-    string_dropdown(resource_group_list, :key => :id, :value => :name)
-  rescue => e
-    log_error_message(__method__, '', e)
-    raise
-  end
-
-  # Add new volume fields. Super adds requester_group & owner_group
-  # @param values [Hash] Values for use in provision request.
-  # def set_request_values(values)
-  #   # values[:new_volumes] = parse_new_volumes_fields(values)
-  #   super
-  # end
-
-  # def parse_new_volumes_fields(values)
-  #   new_volumes = []
-  #   storage_type = values[:storage_type][1]
-
-  #   values.select { |k, _v| k =~ /(#{volume_dialog_keys.join("|")})_(\d+)/ }.each do |key, value|
-  #     field, cnt = key.to_s.split("_")
-  #     cnt = Integer(cnt)
-
-  #     new_volumes[cnt] ||= {}
-  #     new_volumes[cnt][field.to_sym] = value
-  #   end
-
-  #   new_volumes.drop(1).map! do |new_volume|
-  #     new_volume[:size] = new_volume[:size].to_i
-  #     new_volume[:shareable] = [nil, 'null'].exclude?(new_volume[:shareable])
-  #     new_volume[:diskType] = storage_type
-  #     new_volume
-  #   end
-  # end
-
-  def validate_entitled_processors(_field, values, _dlg, _fld, value)
-    $ibm_cloud_log.info('validate_entitled_processors')
-    dedicated = values[:instance_type][1] == 'dedicated'
-
-    fval = /^\s*\d*(\.\d+)?\s*$/.match?(value) ? value.strip.to_f : 0
-    return _("Entitled Processors field does not contain a well-formed positive number") unless fval > 0
-
-    if dedicated
-      return _('For dedicated processors, the format is: "positive integer"') unless fval % 1 == 0
-    else
-      return _('For shared processors, the format is: "positive whole multiple of 0.25"') unless ((fval / 0.25) % 1).to_d == 0.to_d
-    end
-  end
-
-  def validate_ip_address(_field, _values, _dlg, _fld, value)
-    $ibm_cloud_log.info('validate_ip_address')
-    return _('IP is blank') if value.blank?
-
-    begin
-      valid = IPAddr.new(value.strip).ipv4?
-    rescue IPAddr::InvalidAddressError
-      valid = false
-    end
-
-    return _('IP-address field has to be either blank or a valid IPv4 address') unless valid
   end
 
   private
@@ -188,22 +100,22 @@ class ManageIQ::Providers::IbmCloud::VPC::CloudManager::ProvisionWorkflow < ::Mi
 
     @ar_ems = ems
   rescue => e
-    log_error_message(__method__, '', e)
+    log_message('', __method__, e)
     raise
   end
 
   # Get a vpc sdk instance.
-  # TODO: Remove when all values available via persistor.
+  # TODO: Remove when all values available via persister.
   # @return [ManageIQ::Providers::IbmCloud::CloudTools::Vpc]
   def sdk
     ar_ems.connect
   rescue => e
-    log_error_message(__method__, "Error received while getting SDK object.", e)
+    log_message("Error received while getting SDK object.", __method__, e)
     raise
   end
 
   # Use callbacks to interact with the VPC SDK.
-  # TODO: Remove when all values available via persistor.
+  # TODO: Remove when all values available via persister.
   # @param call_type [Symbol] Either :request or :collection.
   # @param call_back [Symbol] The SDK call_back to call.
   # @param optional_key [Symbol | String] The key of the returned api_call to retrieve.
@@ -211,7 +123,7 @@ class ManageIQ::Providers::IbmCloud::VPC::CloudManager::ProvisionWorkflow < ::Mi
   def sdk_fetch(call_type, call_back, optional_key: nil)
     result = sdk.send(call_type, call_back)
 
-    # If the cloud_tool call_back is request then a hash will be returned and the Array needs to be exctracted using the optional_key.
+    # If the cloud_tool call_back is request then a hash will be returned and the Array needs to be extracted using the optional_key.
     return result.to_a if optional_key.nil?
 
     array_attempt = find_key(result, optional_key)
@@ -219,29 +131,34 @@ class ManageIQ::Providers::IbmCloud::VPC::CloudManager::ProvisionWorkflow < ::Mi
 
     raise MiqException::MiqProvisionError, "unexpected returned results #{result}"
   rescue => e
-    log_error_message(__method__, "Using #{call_type} #{call_back} with #{optional_key}", e)
+    log_message("Using #{call_type} #{call_back} with #{optional_key}", __method__, e)
     [{'Error' => 'Provider experienced error'}]
   end
 
   # Convert an array of hash like objects into a hash.
   # @param provider [Array[Hash]]  An object that acts as an array with hash contents.
   # @param key [String | Symbol] The key in Hash to use for key of the returned hash.
-  # @param value [String | Symbol] The key in Hash to use for valuee of the returned hash.
+  # @param value [String | Symbol] The key in Hash to use for value of the returned hash.
   # @param add_none [Boolean] Add a None key & value.
   # @return [Hash] A hash with the contents of provided key as the key and contents of value key as the value.
   # @return [Hash] If an error is encountered while processing then a hash with Error and 'Provider experienced error' will be returned.
   # On error a log message will be printed to the ibm_cloud.log file.
-  def string_dropdown(provider, key: :ems_ref, value: :name, add_none: false)
+  def string_dropdown(provider, key: :ems_ref, value: :name, add_none: false, remove_fields: [])
     # Error handling setup.
     parent_method = caller(1..1).first.split(' ')[-1]
 
-    raise "#{provider.class} does not respond to each_with_object method." unless provider.respond_to?(:each_with_object)
+    raise "#{provider.class.name} does not respond to each_with_object method." unless provider.respond_to?(:each_with_object)
 
-    values = provider.each_with_object({}) { |item, obj| obj[find_key(item, key)] = find_key(item, value) }
+    values = provider.each_with_object({}) do |item, obj|
+      return_value = find_key(item, value)
+      next if remove_fields.include?(return_value)
+
+      obj[find_key(item, key)] = return_value
+    end
     values["None"] = "None" if add_none
     values
   rescue => e
-    log_error_message(__method__, "called by: #{parent_method} using #{key} => #{value}", e)
+    log_message("#{parent_method} #{provider.class.name} using #{key} => #{value}", __method__, e)
     {'Error' => 'Provider experienced error', 'None' => 'None'}
   end
 
@@ -253,7 +170,7 @@ class ManageIQ::Providers::IbmCloud::VPC::CloudManager::ProvisionWorkflow < ::Mi
   def find_key(item, key)
     item[key.to_sym] || item[key.to_s] || "key #{key} does not exist in Hash"
   rescue => e
-    log_error_message(__method__, "#{item.class} had error using #{key}", e)
+    log_message("#{item.class} had error using #{key}", __method__, e)
     e.to_s
   end
 
@@ -274,24 +191,28 @@ class ManageIQ::Providers::IbmCloud::VPC::CloudManager::ProvisionWorkflow < ::Mi
       index += 1
     end
   rescue => e
-    log_error_message(__method__, "called by: #{parent_method}", e)
+    log_message("called by: #{parent_method}", __method__, e)
     {0 => 'Provider experienced error'}
   end
 
-  # Get a templage object by the returned key.
+  # Get a template object by the returned key.
   # @return [MiqTemplate]
   def vm_image
     @vm_image ||= MiqTemplate.find_by(:id => get_option(:src_vm_id))
-  rescue RuntimeError => e
-    log_error_message(__method__, @vm_image, e)
+  rescue => e
+    log_message(@vm_image, __method__, e)
   end
 
-  # Sets a standardised error log format.
-  # @param method_namee [String] The name of the calling method.
-  # @param msg [String] A customized message which should have common variables to troubleshoot with.
-  # @param exception [Exception] A ruby excepctions which will print out its error string.
-  def log_error_message(method_name, msg, exception)
-    $ibm_cloud_log.error("#{self.class}.#{method_name} #{msg} exception: #{exception}")
+  # Standardise the input of log messages.
+  # @param method_name [String] The name of the calling method.
+  # @param msg [String] The message to print.
+  # @param exception [StandardError] An exception subclassed from StandardError
+  # @return [Boolean] The return from the logger method.
+  def log_message(msg = '', method_name = nil, exception = nil)
+    standard_message = method_name.nil? ? msg.to_s : "#{self.class.name}.#{method_name} #{msg}"
+    return $ibm_cloud_log.error("#{standard_message} Exception: #{exception}") unless exception.nil?
+
+    $ibm_cloud_log.info(standard_message)
   end
 
   # Required method to display the provision workflow in UI.
@@ -300,3 +221,85 @@ class ManageIQ::Providers::IbmCloud::VPC::CloudManager::ProvisionWorkflow < ::Mi
   def dialog_name_from_automate(_message = 'get_dialog_name')
   end
 end
+
+# Fetch volumes that either multi_attachment or with a status of available.
+# @param _options [Hash] Option values returned from web form.
+# @return [Hash] Hash with ems_ref as key and name as value.
+# def allowed_cloud_volumes(_options = {})
+#   # TODO: Filter on zone. Return empty hash until VPC is set.
+#   ar_volumes = ar_ems.cloud_volumes.select do |cloud_volume|
+#     (cloud_volume['multi_attachment'] || cloud_volume['status'] == 'available')
+#   end
+
+#   string_dropdown(ar_volumes)
+# rescue => e
+#   log_message('', __method__, e)
+#   raise
+# end
+
+# Retrieve a list of resource groups from the IBM Cloud resource controller API.
+# TODO: Remove when all values available via persister.
+# @param _options [Hash] Not used
+# @return [Array<Hash<String: String>>] A list of hashes containing the resource group id and name.
+# def allowed_resource_group(_options = {})
+#   resource_group_list = []
+#   string_dropdown(resource_group_list, :key => :id, :value => :name)
+# rescue => e
+#   log_message('', __method__, e)
+#   raise
+# end
+
+# Add new volume fields. Super adds requester_group & owner_group
+# @param values [Hash] Values for use in provision request.
+# def set_request_values(values)
+#   result = super
+#   log_message("#{values} translates to #{result}", __method__)
+# end
+
+# In Power Called by set_request_values
+# def parse_new_volumes_fields(values)
+#   new_volumes = []
+#   storage_type = values[:storage_type][1]
+
+#   values.select { |k, _v| k =~ /(#{volume_dialog_keys.join("|")})_(\d+)/ }.each do |key, value|
+#     field, cnt = key.to_s.split("_")
+#     cnt = Integer(cnt)
+
+#     new_volumes[cnt] ||= {}
+#     new_volumes[cnt][field.to_sym] = value
+#   end
+
+#   new_volumes.drop(1).map! do |new_volume|
+#     new_volume[:size] = new_volume[:size].to_i
+#     new_volume[:shareable] = [nil, 'null'].exclude?(new_volume[:shareable])
+#     new_volume[:diskType] = storage_type
+#     new_volume
+#   end
+# end
+
+# def validate_entitled_processors(_field, values, _dlg, _fld, value)
+#   $ibm_cloud_log.info('validate_entitled_processors')
+#   dedicated = values[:instance_type][1] == 'dedicated'
+
+#   fval = /^\s*\d*(\.\d+)?\s*$/.match?(value) ? value.strip.to_f : 0
+#   return _("Entitled Processors field does not contain a well-formed positive number") unless fval > 0
+
+#   if dedicated
+#     return _('For dedicated processors, the format is: "positive integer"') unless fval % 1 == 0
+#   else
+#     return _('For shared processors, the format is: "positive whole multiple of 0.25"') unless ((fval / 0.25) % 1).to_d == 0.to_d
+#   end
+# end
+
+# def validate_ip_address(_field, _values, _dlg, _fld, value)
+#   $ibm_cloud_log.info('validate_ip_address')
+#   return _('IP is blank') if value.blank?
+
+#   begin
+#     valid = IPAddr.new(value.strip).ipv4?
+#   rescue IPAddr::InvalidAddressError
+#     valid = false
+#   end
+
+#   return _('IP-address field has to be either blank or a valid IPv4 address') unless valid
+# end
