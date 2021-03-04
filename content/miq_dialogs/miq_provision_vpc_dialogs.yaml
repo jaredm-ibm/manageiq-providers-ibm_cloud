@@ -12,14 +12,24 @@
       :fields: {}
       :display: :hide
 
+    :schedule:
+      :description: Schedule
+      :fields: {}
+      :display: :hide
+
+    :purpose:
+      :description: Purpose
+      :fields: {}
+      :display: :hide
+
     :customize:
       :description: Customization
       :fields:
         :ip_addr:
           :description: Specify an IPv4 address
           :required_method: :validate_ip_address
-          :required: true
-          :display: :edit
+          :required: false
+          :display: :hide
           :data_type: :string
           :min_length: 8
           :max_length: 16
@@ -28,6 +38,28 @@
           :required: false
           :display: :edit
           :data_type: :string
+      :display: :hide
+
+    :service:
+      :description: General
+      :fields:
+        :provision_type:
+          :description: System Profile
+          :values_from:
+            :method: :provision_type_to_profile
+          :required: true
+          :display: :edit
+          :default: 0
+          :data_type: :integer
+        :vm_name:
+          :description: Instance Name
+          :required_method: :validate_regex
+          :required_regex: !ruby/regexp /^[a-zA-Z]+$/
+          :required: true
+          :display: :edit
+          :data_type: :string
+          :min_length: 1
+          :max_length: 30
       :display: :show
 
     :environment:
@@ -43,120 +75,65 @@
           :default: false
           :data_type: :boolean
         :placement_availability_zone:
-          :values_from:
-            :method: :allowed_placement_availability_zone
-          :auto_select_single: false
           :description: Availability Zones
-          :required: false
+          :values_from:
+            :method: :placement_availability_zone_to_zone
+          :auto_select_single: false
+          :required: true
           :display: :edit
           :data_type: :integer
           :required_description: Availability Zone Name
+        :cloud_network:
+          :description: VPC
+          :values_from:
+            :method: cloud_networks_to_vpc
+          :required: true
+          :display: :edit
+          :data_type: :string
+        :cloud_subnet:
+          :description: Subnet
+          :values_from:
+            :method: cloud_subnets
+          :required: true
+          :display: :edit
+          :data_type: :string
         :resource_group:
           :description: Resource groups
-          :required: true
-          :display: :edit
-          :values_from:
-            :method: :allowed_resource_group
-          :data_type: :string
-        :cloud_network:
-          :description: The VPC to connect to
-          :required: true
-          :display: :edit
-          :values_from:
-            :method: :allowed_cloud_networks
-          :data_type: :string
-      :display: :show
-
-    :schedule:
-      :description: Schedule
-      :fields: {}
-      :display: :hide
-
-    :purpose:
-      :description: Purpose
-      :fields: {}
-      :display: :hide
-
-    :service:
-      :description: General
-      :fields:
-        :number_of_vms:
-          :values:
-            1: 1
-          :description: Number of Instances
           :required: false
           :display: :hide
-          :default: 1
-          :data_type: :integer
-        :vm_name:
-          :description: Instance Name
-          :required_method: :validate_regex
-          :required_regex: !ruby/regexp /^[a-zA-Z]+$/
-          :required: true
-          :display: :edit
           :data_type: :string
-          :min_length: 1
-          :max_length: 30
       :display: :show
 
     :hardware:
       :description: Profile
       :fields:
-        :sys_type:
-          :values_from:
-            :method: :allowed_sys_type
-          :description: Machine Type
-          :required: true
-          :display: :edit
-          :default: 0
-          :data_type: :integer
         :storage_type:
+          :description: Boot Volume Profile
           :values_from:
-            :method: :allowed_storage_type
-          :description: Storage Type
+            :method: :storage_type_to_profile
           :required: true
           :display: :edit
-          :data_type: :integer
-        :cloud_volumes:
-          :values_from:
-            :method: :allowed_cloud_volumes
-          :description: Attach Volumes
-          :required: false
-          :display: :edit
-          :auto_select_single: false
+          :default: 'general-purpose'
           :data_type: :string
         :guest_access_key_pair:
           :values_from:
-            :method: :allowed_guest_access_key_pairs
+            :method: :guest_access_key_pairs_to_keys
           :description: Key Pair
           :required: true
           :display: :edit
+          :data_type: :string
+        :cloud_volumes:
+          :description: Attach Volumes
+          :required: false
+          :display: :hide
+          :auto_select_single: false
           :data_type: :string
       :display: :show
 
     :network:
       :description: Network
-      :fields:
-        :vlan:
-          :values_from:
-            :options:
-              :dvs: false
-              :vlans: false
-            :method: :allowed_subnets
-          :description: Network Interfaces
-          :required: true
-          :display: :edit
-          :data_type: :string
-        :public_network:
-          :values:
-            false: 0
-            true: 1
-          :description: Attach to New Public Network
-          :required: false
-          :display: :edit
-          :data_type: :boolean
-          :default: false
-      :display: :show
+      :fields: {}
+      :display: :hide
 
     :volumes:
       :description: New Volumes
@@ -181,7 +158,7 @@
           :data_type: :boolean
           :default: false
           :display: :edit
-      :display: :show
+      :display: :hide
 
   :dialog_order:
   - :service
