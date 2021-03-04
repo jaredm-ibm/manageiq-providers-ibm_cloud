@@ -108,10 +108,15 @@ class ManageIQ::Providers::IbmCloud::VPC::CloudManager::ProvisionWorkflow < ::Mi
   # @return [Array<Hash<String: String>>] A list of hashes containing the resource group id and name.
   def allowed_resource_group(_options = {})
     # FIXME: Guard against cloudtools without resource controller method. I don't want to check it in at the moment. It is a hack, and I'm not sure I need the data.
-    resource_group_list = sdk.cloudtools.respond_to?(:resource_controller) ? sdk.cloudtools.resource_controller.resource_groups : []
+    begin
+      resource_group_list = sdk.cloudtools.respond_to?(:resource_controller) ? sdk.cloudtools.resource_controller.resource_groups : []
+    rescue => e
+      log_error_message(__method__, '', e)
+      resource_group_list = []
+    end
     string_dropdown(resource_group_list, :key => :id, :value => :name)
   rescue => e
-    log_error_message(__method__, "Values: #{@allowed_resource_group}", e)
+    log_error_message(__method__, '', e)
     raise
   end
 
